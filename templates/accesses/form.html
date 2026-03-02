@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Добавить' if action == 'add' else 'Изменить' }} Доступ — SSL Manager{% endblock %}
+{% block page_title %}
+<i class="bi bi-key-fill me-2 text-warning"></i>
+{{ 'Добавить доступ' if action == 'add' else 'Изменить доступ' }}
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="bi bi-{{ 'plus-circle' if action == 'add' else 'pencil-square' }} me-2"></i>
+                    {{ 'Новый доступ' if action == 'add' else 'Редактирование: ' + item.name }}
+                </h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Название <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="name"
+                                value="{{ form.get('name', item.name if item else '') }}"
+                                placeholder="Например: Доступ к prod серверу" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Доменное имя / Приложение <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="domain"
+                                value="{{ form.get('domain', item.domain if item else '') }}"
+                                placeholder="server.example.com" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">IP Адрес <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="ip_address"
+                                value="{{ form.get('ip_address', item.ip_address if item else '') }}"
+                                placeholder="192.168.1.1" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Тип <span class="text-danger">*</span></label>
+                            <select class="form-select" name="access_type" required>
+                                <option value="">— Выберите тип —</option>
+                                {% set cur_type = form.get('access_type', item.access_type if item else '') %}
+                                {% for key, label in access_types.items() %}
+                                <option value="{{ key }}" {{ 'selected' if cur_type==key else '' }}>
+                                    {{ label }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Имя пользователя <span
+                                    class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="username"
+                                value="{{ form.get('username', item.username if item else '') }}"
+                                placeholder="root / admin / user" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Пароль
+                                {% if action == 'edit' %}<small class="text-muted fw-normal">(оставьте пустым — без
+                                    изменений)</small>{% else %}<span class="text-danger">*</span>{% endif %}
+                            </label>
+                            <div class="input-group">
+                                <input type="password" class="form-control" name="password" id="passwordField"
+                                    value="{{ form.get('password', item.decrypted_password if item else '') }}"
+                                    placeholder="Пароль" {{ 'required' if action=='add' else '' }}>
+                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                    <i class="bi bi-eye" id="eyeIcon"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold">Публичный ключ <span
+                                    class="text-muted fw-normal">(необязательно)</span></label>
+                            <textarea class="form-control font-monospace" name="public_key" rows="3"
+                                placeholder="ssh-rsa AAAA...">{{ form.get('public_key', item.public_key if item and item.public_key else '') }}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Действителен до <span
+                                    class="text-muted fw-normal">(необязательно)</span></label>
+                            <input type="date" class="form-control" name="valid_until"
+                                value="{{ form.get('valid_until', item.valid_until.strftime('%Y-%m-%d') if item and item.valid_until else '') }}">
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>{{ 'Добавить' if action == 'add' else 'Сохранить' }}
+                        </button>
+                        <a href="{{ url_for('accesses.index') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-lg me-1"></i>Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const toggleBtn = document.getElementById('togglePassword');
+    const passwordField = document.getElementById('passwordField');
+    const eyeIcon = document.getElementById('eyeIcon');
+
+    toggleBtn.addEventListener('click', function () {
+        const isPassword = passwordField.type === 'password';
+        passwordField.type = isPassword ? 'text' : 'password';
+        eyeIcon.className = isPassword ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+</script>
+{% endblock %}

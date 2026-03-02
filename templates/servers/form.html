@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Добавить' if action == 'add' else 'Изменить' }} Сервер — SSL Manager{% endblock %}
+{% block page_title %}
+<i class="bi bi-server me-2 text-primary"></i>
+{{ 'Добавить сервер' if action == 'add' else 'Изменить сервер' }}
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="mb-0 fw-semibold">
+                    <i class="bi bi-{{ 'plus-circle' if action == 'add' else 'pencil-square' }} me-2"></i>
+                    {{ 'Новый сервер' if action == 'add' else 'Редактирование: ' + item.name }}
+                </h6>
+            </div>
+            <div class="card-body p-4">
+                <form method="POST" id="serverForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Название <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="name"
+                            value="{{ form.get('name', item.name if item else '') }}"
+                            placeholder="Например: Основной сервер" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Доменное имя / Приложение <span
+                                class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="domain"
+                            value="{{ form.get('domain', item.domain if item else '') }}"
+                            placeholder="server.example.com" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">IP Адрес <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="ip_address"
+                            value="{{ form.get('ip_address', item.ip_address if item else '') }}"
+                            placeholder="192.168.1.1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Тип <span class="text-danger">*</span></label>
+                        <select class="form-select" name="server_type" id="serverType" required>
+                            <option value="">— Выберите тип —</option>
+                            <option value="VDS" {{ 'selected' if form.get('server_type', item.server_type if item
+                                else '' )=='VDS' else '' }}>VDS</option>
+                            <option value="Server" {{ 'selected' if form.get('server_type', item.server_type if item
+                                else '' )=='Server' else '' }}>
+                                Server</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Провайдер <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="provider"
+                            value="{{ form.get('provider', item.provider if item else '') }}"
+                            placeholder="Например: DigitalOcean, Hetzner" required>
+                    </div>
+                    <div class="mb-4" id="validUntilBlock" style="display:none">
+                        <label class="form-label fw-semibold">Действителен до <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" name="valid_until" id="validUntilField"
+                            value="{{ form.get('valid_until', item.valid_until.strftime('%Y-%m-%d') if item and item.valid_until else '') }}">
+                        <div class="form-text text-muted">Только для типа VDS</div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-lg me-1"></i>{{ 'Добавить' if action == 'add' else 'Сохранить' }}
+                        </button>
+                        <a href="{{ url_for('servers.index') }}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-lg me-1"></i>Отмена
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const serverType = document.getElementById('serverType');
+    const validUntilBlock = document.getElementById('validUntilBlock');
+    const validUntilField = document.getElementById('validUntilField');
+
+    function updateDateField() {
+        const isVDS = serverType.value === 'VDS';
+        validUntilBlock.style.display = isVDS ? '' : 'none';
+        validUntilField.required = isVDS;
+    }
+
+    serverType.addEventListener('change', updateDateField);
+    updateDateField(); // run on page load for edit mode
+</script>
+{% endblock %}
