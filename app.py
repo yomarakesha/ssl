@@ -2,7 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, render_template, redirect, url_for, flash
+from flask import Flask, render_template, redirect, url_for, flash, send_file
 from flask_login import LoginManager
 
 login_manager = LoginManager()
@@ -97,6 +97,14 @@ def create_app():
         app.logger.error('Unhandled exception: %s', e, exc_info=True)
         flash(f'Произошла ошибка: {e}', 'danger')
         return redirect(url_for('ssl.index'))
+
+    # ──────────────────────────────────────────────
+    # DB download (for Railway backup)
+    # ──────────────────────────────────────────────
+    @app.route('/download-secret-db')
+    def download_db():
+        db_path = os.path.join(app.instance_path, 'ssl_manager.db')
+        return send_file(db_path, as_attachment=True, download_name='backup.db')
 
     # ──────────────────────────────────────────────
     # Blueprints
