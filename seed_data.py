@@ -2,27 +2,30 @@
 Mock data seeder for SSL Manager.
 Usage: python seed_data.py
 
-Adds test records for SSL keys, servers, and accesses.
-Access passwords are encrypted via Fernet.
-Safe to run multiple times — idempotent for SSL/Server, re-creates accesses.
+Adds test records for SSL keys, servers, and accesses, scoped to the
+'Default Organization' that init_db.py creates. Re-running clears and
+re-creates them.
 """
 from datetime import date, timedelta
 from app import create_app
-from models import db, SSLKey, Server, Access, encrypt_password
+from models import db, Organization, SSLKey, Server, Access, encrypt_password
 
 app = create_app()
 TODAY = date.today()
 
 
-def add_if_not_exists(model, filter_field, filter_value, **kwargs):
-    """Add a record only if no matching record exists."""
-    if not model.query.filter(getattr(model, filter_field) == filter_value).first():
-        db.session.add(model(**kwargs))
-        return True
-    return False
-
-
 with app.app_context():
+    org = Organization.query.filter_by(name='Default Organization').first()
+    if not org:
+        raise SystemExit(
+            "No 'Default Organization' found. Run `python init_db.py` first."
+        )
+    oid = org.id
+
+    # Always reset seed data to keep it deterministic.
+    SSLKey.query.filter_by(org_id=oid).delete()
+    Server.query.filter_by(org_id=oid).delete()
+    Access.query.filter_by(org_id=oid).delete()
 
     # ── SSL Ключи ──────────────────────────────────────────────────────────
     ssl_entries = [
@@ -38,8 +41,8 @@ with app.app_context():
              ip_address='5.8.9.100',           valid_until=TODAY + timedelta(days=10)),   # warn
     ]
     for e in ssl_entries:
-        ok = add_if_not_exists(SSLKey, 'domain', e['domain'], **e)
-        print(f'  SSL  {e["name"]} — {"добавлен" if ok else "уже существует"}')
+        db.session.add(SSLKey(org_id=oid, **e))
+        print(f'  SSL  {e["name"]} — добавлен')
 
     # ── Серверы ────────────────────────────────────────────────────────────
     server_entries = [
@@ -55,13 +58,10 @@ with app.app_context():
              ip_address='78.90.11.22',  server_type='VDS',    provider='Timeweb',       valid_until=TODAY - timedelta(days=3)),   # expired
     ]
     for e in server_entries:
-        ok = add_if_not_exists(Server, 'domain', e['domain'], **e)
-        print(f'  SRV  {e["name"]} — {"добавлен" if ok else "уже существует"}')
+        db.session.add(Server(org_id=oid, **e))
+        print(f'  SRV  {e["name"]} — добавлен')
 
     # ── Доступы — пароли шифруются Fernet ─────────────────────────────────
-    # Always re-create to ensure Fernet encryption is applied correctly
-    Access.query.delete()
-
     access_entries = [
         dict(name='SSH root Web Server',     domain='web.example.com',
              ip_address='185.10.20.31',      username='root',
@@ -90,7 +90,7 @@ with app.app_context():
              access_type='server',           valid_until=TODAY - timedelta(days=1)),  # expired
     ]
     for e in access_entries:
-        db.session.add(Access(**e))
+        db.session.add(Access(org_id=oid, **e))
         print(f'  ACC  {e["name"]} — добавлен (зашифрован)')
 
     db.session.commit()

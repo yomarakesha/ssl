@@ -288,6 +288,17 @@
                 class="nav-link {{ 'active' if request.blueprint == 'accesses' else '' }}">
                 <i class="bi bi-key-fill"></i> Доступы
             </a>
+            {% if current_user.is_admin %}
+            <div class="nav-label mt-3">Администрирование</div>
+            <a href="{{ url_for('auth.team') }}"
+                class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('auth.') and request.endpoint != 'auth.logout' else '' }}">
+                <i class="bi bi-people-fill"></i> Команда
+            </a>
+            <a href="{{ url_for('billing.index') }}"
+                class="nav-link {{ 'active' if request.blueprint == 'billing' else '' }}">
+                <i class="bi bi-credit-card"></i> Тариф
+            </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-footer">
@@ -302,6 +313,8 @@
         <div class="topbar">
             <span class="topbar-title">{% block page_title %}{% endblock %}</span>
             <div class="topbar-user">
+                <i class="bi bi-building"></i>
+                <span class="me-2">{{ current_user.organization.name }}</span>
                 <i class="bi bi-person-circle"></i>
                 {{ current_user.username }}
             </div>

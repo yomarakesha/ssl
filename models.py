@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import date, datetime, timedelta
 
 from cryptography.fernet import Fernet
@@ -72,6 +73,73 @@ class ExpiryMixin:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Multi-tenancy: an Organization owns all SSL keys, servers, accesses, and users.
+# Users belong to exactly one org (v1). Roles: 'admin' (manage members/billing)
+# or 'member' (manage resources only).
+# ──────────────────────────────────────────────────────────────────────────────
+VALID_ROLES = ('admin', 'member')
+
+
+class Organization(TimestampMixin, db.Model):
+    __tablename__ = 'organizations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+
+    # Billing — see Subscription model below. Mirrored here for fast access.
+    plan = db.Column(db.String(20), nullable=False, default='free')  # free|pro
+    plan_status = db.Column(db.String(30), nullable=False, default='active')
+
+    users = db.relationship('User', back_populates='organization', lazy='dynamic')
+    ssl_keys = db.relationship('SSLKey', back_populates='organization',
+                               lazy='dynamic', cascade='all, delete-orphan')
+    servers = db.relationship('Server', back_populates='organization',
+                              lazy='dynamic', cascade='all, delete-orphan')
+    accesses = db.relationship('Access', back_populates='organization',
+                               lazy='dynamic', cascade='all, delete-orphan')
+    invites = db.relationship('Invite', back_populates='organization',
+                              lazy='dynamic', cascade='all, delete-orphan')
+    subscription = db.relationship('Subscription', back_populates='organization',
+                                   uselist=False, cascade='all, delete-orphan')
+
+    @property
+    def is_paid(self) -> bool:
+        return self.plan != 'free' and self.plan_status in ('active', 'trialing')
+
+    def record_count(self) -> int:
+        return (self.ssl_keys.count()
+                + self.servers.count()
+                + self.accesses.count())
+
+    @property
+    def record_limit(self) -> int | None:
+        """Free tier: 10 records total. Paid: unlimited (None)."""
+        return None if self.is_paid else 10
+
+    @property
+    def can_add_record(self) -> bool:
+        limit = self.record_limit
+        return limit is None or self.record_count() < limit
+
+
+class Subscription(TimestampMixin, db.Model):
+    """Mirror of the active Stripe subscription, for billing UI + webhook updates."""
+    __tablename__ = 'subscriptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=False, unique=True)
+    stripe_customer_id = db.Column(db.String(120), nullable=True, index=True)
+    stripe_subscription_id = db.Column(db.String(120), nullable=True, index=True)
+    plan = db.Column(db.String(20), nullable=False, default='free')
+    status = db.Column(db.String(30), nullable=False, default='active')
+    current_period_end = db.Column(db.DateTime, nullable=True)
+    cancel_at_period_end = db.Column(db.Boolean, nullable=False, default=False)
+
+    organization = db.relationship('Organization', back_populates='subscription')
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Models
 # ──────────────────────────────────────────────────────────────────────────────
 class User(UserMixin, db.Model):
@@ -79,8 +147,14 @@ class User(UserMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(200), unique=True, nullable=True)
     password_hash = db.Column(db.String(256), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='member')
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=False, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    organization = db.relationship('Organization', back_populates='users')
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
@@ -88,15 +162,50 @@ class User(UserMixin, db.Model):
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
+    @property
+    def is_admin(self) -> bool:
+        return self.role == 'admin'
+
+
+class Invite(db.Model):
+    """One-time invite token that lets a new user join an existing org."""
+    __tablename__ = 'invites'
+
+    id = db.Column(db.Integer, primary_key=True)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=False, index=True)
+    email = db.Column(db.String(200), nullable=True)
+    role = db.Column(db.String(20), nullable=False, default='member')
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False,
+                           default=lambda: datetime.utcnow() + timedelta(days=7))
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    organization = db.relationship('Organization', back_populates='invites')
+
+    @staticmethod
+    def new_token() -> str:
+        return secrets.token_urlsafe(32)
+
+    @property
+    def is_valid(self) -> bool:
+        return self.used_at is None and self.expires_at > datetime.utcnow()
+
 
 class SSLKey(TimestampMixin, ExpiryMixin, db.Model):
     __tablename__ = 'ssl_keys'
 
     id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     domain = db.Column(db.String(200), nullable=False)
     ip_address = db.Column(db.String(50), nullable=False)
     valid_until = db.Column(db.Date, nullable=False)
+
+    organization = db.relationship('Organization', back_populates='ssl_keys')
 
 
 VALID_SERVER_TYPES = ('VDS', 'Server')
@@ -106,6 +215,8 @@ class Server(TimestampMixin, ExpiryMixin, db.Model):
     __tablename__ = 'servers'
 
     id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     domain = db.Column(db.String(200), nullable=False)
     ip_address = db.Column(db.String(50), nullable=False)
@@ -115,6 +226,8 @@ class Server(TimestampMixin, ExpiryMixin, db.Model):
     # None → Всегда (only for type='Server')
     valid_until = db.Column(db.Date, nullable=True)
 
+    organization = db.relationship('Organization', back_populates='servers')
+
 
 VALID_ACCESS_TYPES = ('account', 'server', 'server_management')
 
@@ -123,6 +236,8 @@ class Access(TimestampMixin, ExpiryMixin, db.Model):
     __tablename__ = 'accesses'
 
     id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=False, index=True)
     name = db.Column(db.String(200), nullable=False)
     domain = db.Column(db.String(200), nullable=False)
     ip_address = db.Column(db.String(50), nullable=False)
@@ -133,6 +248,8 @@ class Access(TimestampMixin, ExpiryMixin, db.Model):
     # Enum-like: 'account' | 'server' | 'server_management'
     access_type = db.Column(db.String(50), nullable=False)
     valid_until = db.Column(db.Date, nullable=True)
+
+    organization = db.relationship('Organization', back_populates='accesses')
 
     @property
     def decrypted_password(self) -> str:

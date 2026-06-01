@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% block title %}Команда — IT Manager{% endblock %}
+{% block page_title %}Команда{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <strong><i class="bi bi-people-fill me-1"></i> Участники ({{ members|length }})</strong>
+                <span class="text-muted small">{{ current_user.organization.name }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Имя</th>
+                            <th>Email</th>
+                            <th>Роль</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in members %}
+                        <tr>
+                            <td>{{ m.username }}{% if m.id == current_user.id %} <span class="text-muted small">(вы)</span>{% endif %}</td>
+                            <td class="text-muted">{{ m.email or '—' }}</td>
+                            <td>
+                                {% if m.is_admin %}
+                                <span class="badge badge-expiry-warn">Администратор</span>
+                                {% else %}
+                                <span class="badge badge-expiry-ok">Участник</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-envelope-plus-fill me-1"></i> Пригласить</strong></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('auth.create_invite') }}" class="row g-2">
+                    <div class="col-sm-7">
+                        <input type="email" class="form-control" name="email" placeholder="email сотрудника (необязательно)">
+                    </div>
+                    <div class="col-sm-3">
+                        <select class="form-select" name="role">
+                            <option value="member" selected>Участник</option>
+                            <option value="admin">Администратор</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-2">
+                        <button type="submit" class="btn btn-primary w-100">Создать</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if invites %}
+        <div class="card mt-3">
+            <div class="card-header"><strong><i class="bi bi-link-45deg me-1"></i> Активные инвайты</strong></div>
+            <ul class="list-group list-group-flush">
+                {% for inv in invites %}
+                <li class="list-group-item">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="small text-muted">
+                                {{ inv.email or 'без email' }} · роль: {{ 'admin' if inv.role == 'admin' else 'member' }}
+                                · до {{ inv.expires_at.strftime('%Y-%m-%d') }}
+                            </div>
+                            <div class="input-group input-group-sm mt-1">
+                                <input type="text" class="form-control font-monospace"
+                                       value="{{ url_for('auth.accept_invite', token=inv.token, _external=True) }}"
+                                       readonly onclick="this.select()">
+                                <button class="btn btn-outline-secondary"
+                                        onclick="navigator.clipboard.writeText(this.previousElementSibling.value); this.innerHTML='<i class=&quot;bi bi-check&quot;></i>'">
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <form method="POST" action="{{ url_for('auth.revoke_invite', invite_id=inv.id) }}" class="ms-2">
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    onclick="return confirm('Отозвать инвайт?')">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </form>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

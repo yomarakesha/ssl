@@ -1,34 +1,19 @@
-import re
-from datetime import datetime
-
 from flask import Blueprint, render_template, redirect, url_for, request, flash
-from flask_login import login_required
+from flask_login import login_required, current_user
 
 from models import db, Server, VALID_SERVER_TYPES
+from routes._helpers import (
+    validate_ip, parse_date, org_query, get_for_org_or_404,
+    enforce_record_limit,
+)
 
 servers_bp = Blueprint('servers', __name__, url_prefix='/servers')
-
-_IP_RE = re.compile(r'^(\d{1,3}\.){3}\d{1,3}(/\d{1,2})?$')
-
-
-def _validate_ip(ip: str) -> bool:
-    if not _IP_RE.match(ip):
-        return False
-    parts = ip.split('/')[0].split('.')
-    return all(0 <= int(p) <= 255 for p in parts)
-
-
-def _parse_date(date_str: str):
-    try:
-        return datetime.strptime(date_str.strip(), '%Y-%m-%d').date()
-    except (ValueError, AttributeError):
-        return None
 
 
 @servers_bp.route('/')
 @login_required
 def index():
-    servers = Server.query.order_by(Server.name).all()
+    servers = org_query(Server).order_by(Server.name).all()
     return render_template('servers/index.html', servers=servers)
 
 
@@ -37,6 +22,8 @@ def index():
 def add():
     form = {}
     if request.method == 'POST':
+        if not enforce_record_limit():
+            return redirect(url_for('billing.index'))
         form = request.form.to_dict()
         name = form.get('name', '').strip()
         domain = form.get('domain', '').strip()
@@ -53,7 +40,7 @@ def add():
             flash('Недопустимый тип сервера.', 'danger')
             return render_template('servers/form.html', action='add', item=None, form=form)
 
-        if not _validate_ip(ip_address):
+        if not validate_ip(ip_address):
             flash('Некорректный IP-адрес.', 'danger')
             return render_template('servers/form.html', action='add', item=None, form=form)
 
@@ -62,13 +49,16 @@ def add():
             if not valid_until_str:
                 flash('Для типа VDS необходимо указать дату окончания.', 'danger')
                 return render_template('servers/form.html', action='add', item=None, form=form)
-            valid_until = _parse_date(valid_until_str)
+            valid_until = parse_date(valid_until_str)
             if not valid_until:
                 flash('Неверный формат даты.', 'danger')
                 return render_template('servers/form.html', action='add', item=None, form=form)
 
-        server = Server(name=name, domain=domain, ip_address=ip_address,
-                        server_type=server_type, provider=provider, valid_until=valid_until)
+        server = Server(
+            org_id=current_user.org_id,
+            name=name, domain=domain, ip_address=ip_address,
+            server_type=server_type, provider=provider, valid_until=valid_until,
+        )
         db.session.add(server)
         db.session.commit()
         flash('Сервер успешно добавлен.', 'success')
@@ -80,7 +70,7 @@ def add():
 @servers_bp.route('/edit/<int:server_id>', methods=['GET', 'POST'])
 @login_required
 def edit(server_id):
-    server = Server.query.get_or_404(server_id)
+    server = get_for_org_or_404(Server, server_id)
     form = {}
     if request.method == 'POST':
         form = request.form.to_dict()
@@ -99,7 +89,7 @@ def edit(server_id):
             flash('Недопустимый тип сервера.', 'danger')
             return render_template('servers/form.html', action='edit', item=server, form=form)
 
-        if not _validate_ip(ip_address):
+        if not validate_ip(ip_address):
             flash('Некорректный IP-адрес.', 'danger')
             return render_template('servers/form.html', action='edit', item=server, form=form)
 
@@ -108,7 +98,7 @@ def edit(server_id):
             if not valid_until_str:
                 flash('Для типа VDS необходимо указать дату окончания.', 'danger')
                 return render_template('servers/form.html', action='edit', item=server, form=form)
-            valid_until = _parse_date(valid_until_str)
+            valid_until = parse_date(valid_until_str)
             if not valid_until:
                 flash('Неверный формат даты.', 'danger')
                 return render_template('servers/form.html', action='edit', item=server, form=form)
@@ -129,7 +119,7 @@ def edit(server_id):
 @servers_bp.route('/delete/<int:server_id>', methods=['POST'])
 @login_required
 def delete(server_id):
-    server = Server.query.get_or_404(server_id)
+    server = get_for_org_or_404(Server, server_id)
     db.session.delete(server)
     db.session.commit()
     flash('Сервер удалён.', 'success')
