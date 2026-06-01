@@ -77,7 +77,8 @@ class ExpiryMixin:
 # Users belong to exactly one org (v1). Roles: 'admin' (manage members/billing)
 # or 'member' (manage resources only).
 # ──────────────────────────────────────────────────────────────────────────────
-VALID_ROLES = ('admin', 'member')
+VALID_ROLES = ('admin', 'member', 'viewer')
+EDITOR_ROLES = ('admin', 'member')  # can create/edit/delete resources
 
 
 class Organization(TimestampMixin, db.Model):
@@ -85,12 +86,17 @@ class Organization(TimestampMixin, db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
+    # The owner is special: cannot be removed/demoted; receives billing emails.
+    # Nullable only because of FK chicken-and-egg at creation; always set after.
+    owner_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # Billing — see Subscription model below. Mirrored here for fast access.
     plan = db.Column(db.String(20), nullable=False, default='free')  # free|pro
     plan_status = db.Column(db.String(30), nullable=False, default='active')
 
-    users = db.relationship('User', back_populates='organization', lazy='dynamic')
+    users = db.relationship('User', back_populates='organization',
+                            lazy='dynamic', foreign_keys='User.org_id')
+    owner = db.relationship('User', foreign_keys=[owner_id], post_update=True)
     ssl_keys = db.relationship('SSLKey', back_populates='organization',
                                lazy='dynamic', cascade='all, delete-orphan')
     servers = db.relationship('Server', back_populates='organization',
@@ -150,11 +156,15 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(200), unique=True, nullable=True)
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='member')
+    # Platform-level flag: super-admin (sees /admin, can impersonate, set plans).
+    # Independent of org role. Granted manually via DB or init_db.py.
+    is_staff = db.Column(db.Boolean, nullable=False, default=False)
     org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
                        nullable=False, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-    organization = db.relationship('Organization', back_populates='users')
+    organization = db.relationship('Organization', back_populates='users',
+                                   foreign_keys=[org_id])
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
@@ -165,6 +175,15 @@ class User(UserMixin, db.Model):
     @property
     def is_admin(self) -> bool:
         return self.role == 'admin'
+
+    @property
+    def is_editor(self) -> bool:
+        """Can create/edit/delete resources (admin or member, not viewer)."""
+        return self.role in EDITOR_ROLES
+
+    @property
+    def is_owner(self) -> bool:
+        return self.organization is not None and self.organization.owner_id == self.id
 
 
 class Invite(db.Model):
@@ -254,3 +273,25 @@ class Access(TimestampMixin, ExpiryMixin, db.Model):
     @property
     def decrypted_password(self) -> str:
         return decrypt_password(self.password)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Audit log — every sensitive action gets a row here.
+# ──────────────────────────────────────────────────────────────────────────────
+class AuditLog(db.Model):
+    __tablename__ = 'audit_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    org_id = db.Column(db.Integer, db.ForeignKey('organizations.id'),
+                       nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    actor_label = db.Column(db.String(120), nullable=True)  # snapshot of username at the time
+    action = db.Column(db.String(60), nullable=False, index=True)
+    entity_type = db.Column(db.String(40), nullable=True)
+    entity_id = db.Column(db.Integer, nullable=True)
+    details = db.Column(db.Text, nullable=True)
+    ip_address = db.Column(db.String(50), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False,
+                           default=datetime.utcnow, index=True)
+
+    user = db.relationship('User', foreign_keys=[user_id])

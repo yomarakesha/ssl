@@ -4,8 +4,9 @@ from flask_login import login_required, current_user
 from models import db, Server, VALID_SERVER_TYPES
 from routes._helpers import (
     validate_ip, parse_date, org_query, get_for_org_or_404,
-    enforce_record_limit,
+    enforce_record_limit, editor_required,
 )
+from services.audit import log_action
 
 servers_bp = Blueprint('servers', __name__, url_prefix='/servers')
 
@@ -19,6 +20,7 @@ def index():
 
 @servers_bp.route('/add', methods=['GET', 'POST'])
 @login_required
+@editor_required
 def add():
     form = {}
     if request.method == 'POST':
@@ -60,6 +62,8 @@ def add():
             server_type=server_type, provider=provider, valid_until=valid_until,
         )
         db.session.add(server)
+        db.session.flush()
+        log_action('server.create', 'server', server.id, f'{name} ({domain})')
         db.session.commit()
         flash('Сервер успешно добавлен.', 'success')
         return redirect(url_for('servers.index'))
@@ -69,6 +73,7 @@ def add():
 
 @servers_bp.route('/edit/<int:server_id>', methods=['GET', 'POST'])
 @login_required
+@editor_required
 def edit(server_id):
     server = get_for_org_or_404(Server, server_id)
     form = {}
@@ -109,6 +114,7 @@ def edit(server_id):
         server.server_type = server_type
         server.provider = provider
         server.valid_until = valid_until
+        log_action('server.update', 'server', server.id, f'{name} ({domain})')
         db.session.commit()
         flash('Сервер успешно обновлён.', 'success')
         return redirect(url_for('servers.index'))
@@ -118,8 +124,10 @@ def edit(server_id):
 
 @servers_bp.route('/delete/<int:server_id>', methods=['POST'])
 @login_required
+@editor_required
 def delete(server_id):
     server = get_for_org_or_404(Server, server_id)
+    log_action('server.delete', 'server', server.id, f'{server.name} ({server.domain})')
     db.session.delete(server)
     db.session.commit()
     flash('Сервер удалён.', 'success')

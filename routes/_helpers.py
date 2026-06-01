@@ -52,6 +52,26 @@ def admin_required(view):
     return wrapper
 
 
+def editor_required(view):
+    """403 if the current user is not allowed to modify resources (viewer)."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_editor:
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def staff_required(view):
+    """Platform-level: only super-admins (User.is_staff)."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_staff:
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapper
+
+
 def enforce_record_limit():
     """Return True if a new record can be added; flash + return False otherwise.
 

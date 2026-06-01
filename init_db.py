@@ -2,9 +2,10 @@
 Initialize the database and create a default admin user + organization.
 Usage: python init_db.py
 Default login: admin / admin123  (DEV ONLY — change immediately)
+
+The default admin is also marked is_staff=True so you can access /admin.
 """
 import os
-import secrets
 
 from app import create_app
 from models import db, Organization, User
@@ -19,16 +20,18 @@ with app.app_context():
     else:
         org = Organization(name='Default Organization')
         db.session.add(org)
-        db.session.flush()  # get org.id without committing
+        db.session.flush()
 
         password = os.environ.get('SSL_ADMIN_PASSWORD') or 'admin123'
-        user = User(username='admin', role='admin', org_id=org.id)
+        user = User(username='admin', role='admin', is_staff=True, org_id=org.id)
         user.set_password(password)
         db.session.add(user)
+        db.session.flush()
+        org.owner_id = user.id
         db.session.commit()
 
         if password == 'admin123':
-            print("[OK] User 'admin' created. Password: admin123 (CHANGE THIS)")
+            print("[OK] User 'admin' created (owner + staff). Password: admin123 (CHANGE THIS)")
         else:
             print("[OK] User 'admin' created with SSL_ADMIN_PASSWORD from env.")
     print("[OK] Database initialized.")

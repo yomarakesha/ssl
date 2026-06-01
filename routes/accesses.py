@@ -1,11 +1,12 @@
-from flask import Blueprint, render_template, redirect, url_for, request, flash
+from flask import Blueprint, render_template, redirect, url_for, request, flash, jsonify
 from flask_login import login_required, current_user
 
 from models import db, Access, VALID_ACCESS_TYPES, encrypt_password
 from routes._helpers import (
     validate_ip, parse_date, org_query, get_for_org_or_404,
-    enforce_record_limit,
+    enforce_record_limit, editor_required,
 )
+from services.audit import log_action
 
 accesses_bp = Blueprint('accesses', __name__, url_prefix='/accesses')
 
@@ -26,6 +27,7 @@ def index():
 
 @accesses_bp.route('/add', methods=['GET', 'POST'])
 @login_required
+@editor_required
 def add():
     form = {}
     if request.method == 'POST':
@@ -74,6 +76,8 @@ def add():
             valid_until=valid_until,
         )
         db.session.add(access)
+        db.session.flush()
+        log_action('access.create', 'access', access.id, f'{name} ({domain})')
         db.session.commit()
         flash('Доступ успешно добавлен.', 'success')
         return redirect(url_for('accesses.index'))
@@ -84,6 +88,7 @@ def add():
 
 @accesses_bp.route('/edit/<int:access_id>', methods=['GET', 'POST'])
 @login_required
+@editor_required
 def edit(access_id):
     access = get_for_org_or_404(Access, access_id)
     form = {}
@@ -131,6 +136,7 @@ def edit(access_id):
         access.public_key = public_key or None
         access.access_type = access_type
         access.valid_until = valid_until
+        log_action('access.update', 'access', access.id, f'{name} ({domain})')
         db.session.commit()
         flash('Доступ успешно обновлён.', 'success')
         return redirect(url_for('accesses.index'))
@@ -141,9 +147,22 @@ def edit(access_id):
 
 @accesses_bp.route('/delete/<int:access_id>', methods=['POST'])
 @login_required
+@editor_required
 def delete(access_id):
     access = get_for_org_or_404(Access, access_id)
+    log_action('access.delete', 'access', access.id, f'{access.name} ({access.domain})')
     db.session.delete(access)
     db.session.commit()
     flash('Доступ удалён.', 'success')
     return redirect(url_for('accesses.index'))
+
+
+@accesses_bp.route('/<int:access_id>/reveal', methods=['POST'])
+@login_required
+def reveal(access_id):
+    """Return the plaintext password and write an audit entry. Viewer ok —
+    they can read but cannot edit."""
+    access = get_for_org_or_404(Access, access_id)
+    log_action('access.reveal', 'access', access.id, f'{access.name} ({access.domain})')
+    db.session.commit()
+    return jsonify({'password': access.decrypted_password})

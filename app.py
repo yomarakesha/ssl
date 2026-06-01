@@ -154,12 +154,14 @@ def create_app():
     from routes.servers import servers_bp
     from routes.accesses import accesses_bp
     from routes.billing import billing_bp
+    from routes.admin import admin_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(ssl_bp)
     app.register_blueprint(servers_bp)
     app.register_blueprint(accesses_bp)
     app.register_blueprint(billing_bp)
+    app.register_blueprint(admin_bp)
 
     # In dev with SQLite, bootstrap schema directly. In production, use
     # `flask db upgrade` (Alembic) — handled by Migrate above.

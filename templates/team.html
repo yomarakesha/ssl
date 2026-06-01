@@ -2,13 +2,15 @@
 {% block title %}Команда — IT Manager{% endblock %}
 {% block page_title %}Команда{% endblock %}
 
+{% set org = current_user.organization %}
+
 {% block content %}
 <div class="row g-3">
-    <div class="col-12 col-lg-6">
+    <div class="col-12">
         <div class="card">
             <div class="card-header d-flex align-items-center justify-content-between">
                 <strong><i class="bi bi-people-fill me-1"></i> Участники ({{ members|length }})</strong>
-                <span class="text-muted small">{{ current_user.organization.name }}</span>
+                <span class="text-muted small">{{ org.name }}</span>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover mb-0">
@@ -17,18 +19,71 @@
                             <th>Имя</th>
                             <th>Email</th>
                             <th>Роль</th>
+                            <th class="text-end">Действия</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for m in members %}
                         <tr>
-                            <td>{{ m.username }}{% if m.id == current_user.id %} <span class="text-muted small">(вы)</span>{% endif %}</td>
+                            <td>
+                                {{ m.username }}
+                                {% if m.id == current_user.id %} <span class="text-muted small">(вы)</span>{% endif %}
+                                {% if m.id == org.owner_id %}
+                                <span class="badge bg-warning text-dark ms-1" title="Владелец">
+                                    <i class="bi bi-star-fill"></i> Владелец
+                                </span>
+                                {% endif %}
+                            </td>
                             <td class="text-muted">{{ m.email or '—' }}</td>
                             <td>
-                                {% if m.is_admin %}
-                                <span class="badge badge-expiry-warn">Администратор</span>
+                                {% if m.is_admin %}<span class="badge badge-expiry-warn">Администратор</span>
+                                {% elif m.role == 'viewer' %}<span class="badge bg-light text-dark border">Просмотр</span>
+                                {% else %}<span class="badge badge-expiry-ok">Участник</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if m.id != org.owner_id and m.id != current_user.id %}
+                                <div class="dropdown d-inline">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                            data-bs-toggle="dropdown">
+                                        Действия
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end">
+                                        <li><h6 class="dropdown-header">Сменить роль</h6></li>
+                                        {% for r in ['admin', 'member', 'viewer'] %}
+                                        {% if r != m.role %}
+                                        <li>
+                                            <form method="POST" action="{{ url_for('auth.change_role', user_id=m.id) }}">
+                                                <input type="hidden" name="role" value="{{ r }}">
+                                                <button type="submit" class="dropdown-item">→ {{ r }}</button>
+                                            </form>
+                                        </li>
+                                        {% endif %}
+                                        {% endfor %}
+                                        {% if current_user.is_owner %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <form method="POST" action="{{ url_for('auth.transfer_ownership', user_id=m.id) }}"
+                                                  onsubmit="return confirm('Передать права владельца {{ m.username }}? Вы станете обычным админом.')">
+                                                <button type="submit" class="dropdown-item">
+                                                    <i class="bi bi-star me-1"></i>Сделать владельцем
+                                                </button>
+                                            </form>
+                                        </li>
+                                        {% endif %}
+                                        <li><hr class="dropdown-divider"></li>
+                                        <li>
+                                            <form method="POST" action="{{ url_for('auth.remove_member', user_id=m.id) }}"
+                                                  onsubmit="return confirm('Удалить {{ m.username }} из организации?')">
+                                                <button type="submit" class="dropdown-item text-danger">
+                                                    <i class="bi bi-trash me-1"></i>Удалить
+                                                </button>
+                                            </form>
+                                        </li>
+                                    </ul>
+                                </div>
                                 {% else %}
-                                <span class="badge badge-expiry-ok">Участник</span>
+                                <span class="text-muted small">—</span>
                                 {% endif %}
                             </td>
                         </tr>
@@ -44,13 +99,14 @@
             <div class="card-header"><strong><i class="bi bi-envelope-plus-fill me-1"></i> Пригласить</strong></div>
             <div class="card-body">
                 <form method="POST" action="{{ url_for('auth.create_invite') }}" class="row g-2">
-                    <div class="col-sm-7">
-                        <input type="email" class="form-control" name="email" placeholder="email сотрудника (необязательно)">
+                    <div class="col-sm-6">
+                        <input type="email" class="form-control" name="email" placeholder="email (необязательно)">
                     </div>
-                    <div class="col-sm-3">
+                    <div class="col-sm-4">
                         <select class="form-select" name="role">
                             <option value="member" selected>Участник</option>
                             <option value="admin">Администратор</option>
+                            <option value="viewer">Просмотр</option>
                         </select>
                     </div>
                     <div class="col-sm-2">
@@ -59,9 +115,11 @@
                 </form>
             </div>
         </div>
+    </div>
 
+    <div class="col-12 col-lg-6">
         {% if invites %}
-        <div class="card mt-3">
+        <div class="card">
             <div class="card-header"><strong><i class="bi bi-link-45deg me-1"></i> Активные инвайты</strong></div>
             <ul class="list-group list-group-flush">
                 {% for inv in invites %}
@@ -69,7 +127,7 @@
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-grow-1">
                             <div class="small text-muted">
-                                {{ inv.email or 'без email' }} · роль: {{ 'admin' if inv.role == 'admin' else 'member' }}
+                                {{ inv.email or 'без email' }} · роль: {{ inv.role }}
                                 · до {{ inv.expires_at.strftime('%Y-%m-%d') }}
                             </div>
                             <div class="input-group input-group-sm mt-1">

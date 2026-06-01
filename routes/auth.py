@@ -3,8 +3,9 @@ from datetime import datetime
 from flask import Blueprint, render_template, redirect, url_for, request, flash, abort
 from flask_login import login_user, logout_user, login_required, current_user
 
-from models import db, User, Organization, Invite, VALID_ROLES
+from models import db, User, Organization, Invite, AuditLog, VALID_ROLES
 from routes._helpers import admin_required
+from services.audit import log_action
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -26,7 +27,11 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password):
             login_user(user)
+            log_action('auth.login', user=user)
+            db.session.commit()
             return redirect(url_for('ssl.index'))
+        log_action('auth.login_failed', details=f'username={username}')
+        db.session.commit()
         flash('Неверное имя пользователя или пароль.', 'danger')
 
     return render_template('login.html')
@@ -35,6 +40,8 @@ def login():
 @auth_bp.route('/logout')
 @login_required
 def logout():
+    log_action('auth.logout')
+    db.session.commit()
     logout_user()
     return redirect(url_for('auth.login'))
 
@@ -78,6 +85,12 @@ def register():
         user = User(username=username, email=email, role='admin', org_id=org.id)
         user.set_password(password)
         db.session.add(user)
+        db.session.flush()
+
+        # First user is the owner.
+        org.owner_id = user.id
+        log_action('org.create', 'organization', org.id, org_name,
+                   org_id=org.id, user=user)
         db.session.commit()
 
         login_user(user)
@@ -120,6 +133,8 @@ def create_invite():
         created_by_id=current_user.id,
     )
     db.session.add(invite)
+    db.session.flush()
+    log_action('invite.create', 'invite', invite.id, f'role={role} email={email or "-"}')
     db.session.commit()
     flash('Инвайт создан. Скопируй ссылку и отправь сотруднику.', 'success')
     return redirect(url_for('auth.team'))
@@ -132,6 +147,7 @@ def revoke_invite(invite_id):
     invite = Invite.query.filter_by(
         id=invite_id, org_id=current_user.org_id
     ).first_or_404()
+    log_action('invite.revoke', 'invite', invite.id)
     db.session.delete(invite)
     db.session.commit()
     flash('Инвайт отозван.', 'success')
@@ -177,7 +193,11 @@ def accept_invite(token):
         )
         user.set_password(password)
         db.session.add(user)
+        db.session.flush()
         invite.used_at = datetime.utcnow()
+        log_action('invite.accept', 'invite', invite.id,
+                   f'username={username} role={invite.role}',
+                   org_id=invite.org_id, user=user)
         db.session.commit()
 
         login_user(user)
@@ -185,3 +205,99 @@ def accept_invite(token):
         return redirect(url_for('ssl.index'))
 
     return render_template('accept_invite.html', invite=invite, form=form)
+
+
+# ──────────────────────────────────────────────
+# Member management (admin only)
+# ──────────────────────────────────────────────
+def _get_org_member_or_404(user_id: int) -> User:
+    user = User.query.filter_by(id=user_id, org_id=current_user.org_id).first()
+    if user is None:
+        abort(404)
+    return user
+
+
+@auth_bp.route('/team/<int:user_id>/role', methods=['POST'])
+@login_required
+@admin_required
+def change_role(user_id):
+    target = _get_org_member_or_404(user_id)
+    new_role = request.form.get('role', '').strip()
+    if new_role not in VALID_ROLES:
+        flash('Недопустимая роль.', 'danger')
+        return redirect(url_for('auth.team'))
+
+    if target.is_owner:
+        flash('Нельзя изменить роль владельца. Сначала передайте права.', 'warning')
+        return redirect(url_for('auth.team'))
+
+    if target.id == current_user.id and new_role != 'admin':
+        flash('Нельзя понизить собственные права администратора.', 'warning')
+        return redirect(url_for('auth.team'))
+
+    old = target.role
+    target.role = new_role
+    log_action('member.role_change', 'user', target.id,
+               f'{target.username}: {old} → {new_role}')
+    db.session.commit()
+    flash(f'Роль {target.username} изменена на {new_role}.', 'success')
+    return redirect(url_for('auth.team'))
+
+
+@auth_bp.route('/team/<int:user_id>/remove', methods=['POST'])
+@login_required
+@admin_required
+def remove_member(user_id):
+    target = _get_org_member_or_404(user_id)
+
+    if target.is_owner:
+        flash('Нельзя удалить владельца. Сначала передайте права.', 'warning')
+        return redirect(url_for('auth.team'))
+
+    if target.id == current_user.id:
+        flash('Нельзя удалить самого себя.', 'warning')
+        return redirect(url_for('auth.team'))
+
+    log_action('member.remove', 'user', target.id, target.username)
+    db.session.delete(target)
+    db.session.commit()
+    flash(f'Пользователь {target.username} удалён из организации.', 'success')
+    return redirect(url_for('auth.team'))
+
+
+@auth_bp.route('/team/<int:user_id>/transfer-ownership', methods=['POST'])
+@login_required
+@admin_required
+def transfer_ownership(user_id):
+    if not current_user.is_owner:
+        flash('Передавать права может только владелец.', 'danger')
+        return redirect(url_for('auth.team'))
+
+    target = _get_org_member_or_404(user_id)
+    if target.id == current_user.id:
+        flash('Вы уже владелец.', 'info')
+        return redirect(url_for('auth.team'))
+
+    org = current_user.organization
+    org.owner_id = target.id
+    target.role = 'admin'
+    log_action('org.transfer_ownership', 'user', target.id,
+               f'owner: {current_user.username} → {target.username}')
+    db.session.commit()
+    flash(f'Владелец организации теперь {target.username}.', 'success')
+    return redirect(url_for('auth.team'))
+
+
+# ──────────────────────────────────────────────
+# Audit log view (admin only)
+# ──────────────────────────────────────────────
+@auth_bp.route('/audit')
+@login_required
+@admin_required
+def audit():
+    entity = request.args.get('entity', '').strip() or None
+    q = AuditLog.query.filter_by(org_id=current_user.org_id)
+    if entity:
+        q = q.filter_by(entity_type=entity)
+    entries = q.order_by(AuditLog.created_at.desc()).limit(200).all()
+    return render_template('audit.html', entries=entries, entity=entity)
