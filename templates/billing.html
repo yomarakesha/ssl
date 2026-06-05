@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% block title %}Тариф — IT Manager{% endblock %}
+{% block page_title %}Тариф и оплата{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-credit-card me-1"></i> Текущий тариф</strong></div>
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                    <h3 class="mb-0">
+                        {% if org.is_paid %}
+                        <span class="badge bg-success">Pro</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Free</span>
+                        {% endif %}
+                    </h3>
+                    <span class="text-muted">Статус: {{ org.plan_status }}</span>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>Записей</span>
+                        <span>
+                            {{ record_count }}
+                            {% if record_limit %} / {{ record_limit }}{% else %} / ∞{% endif %}
+                        </span>
+                    </div>
+                    {% if record_limit %}
+                    {% set pct = (record_count / record_limit * 100) | round %}
+                    <div class="progress mt-1" style="height: 6px;">
+                        <div class="progress-bar {{ 'bg-danger' if pct >= 100 else ('bg-warning' if pct >= 80 else 'bg-success') }}"
+                             style="width: {{ pct if pct <= 100 else 100 }}%"></div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                {% if not is_admin %}
+                <div class="alert alert-info small mb-0">
+                    Только администратор может управлять тарифом.
+                </div>
+                {% elif org.is_paid %}
+                <form method="POST" action="{{ url_for('billing.portal') }}">
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-gear me-1"></i> Управление подпиской
+                    </button>
+                </form>
+                {% else %}
+                <form method="POST" action="{{ url_for('billing.checkout') }}">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-arrow-up-circle-fill me-1"></i> Перейти на Pro
+                    </button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><strong>Что в Pro</strong></div>
+            <ul class="list-group list-group-flush">
+                <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Неограниченно записей</li>
+                <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Неограниченно участников команды</li>
+                <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Email-уведомления об истечении</li>
+                <li class="list-group-item"><i class="bi bi-check-circle text-success me-2"></i>Приоритетная поддержка</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

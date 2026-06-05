@@ -288,6 +288,36 @@
                 class="nav-link {{ 'active' if request.blueprint == 'accesses' else '' }}">
                 <i class="bi bi-key-fill"></i> Доступы
             </a>
+            {% if current_user.is_admin %}
+            <div class="nav-label mt-3">Администрирование</div>
+            <a href="{{ url_for('auth.team') }}"
+                class="nav-link {{ 'active' if request.endpoint in ('auth.team','auth.change_role','auth.remove_member','auth.transfer_ownership','auth.create_invite','auth.revoke_invite') else '' }}">
+                <i class="bi bi-people-fill"></i> Команда
+            </a>
+            <a href="{{ url_for('auth.audit') }}"
+                class="nav-link {{ 'active' if request.endpoint == 'auth.audit' else '' }}">
+                <i class="bi bi-journal-text"></i> Аудит
+            </a>
+            <a href="{{ url_for('billing.index') }}"
+                class="nav-link {{ 'active' if request.blueprint == 'billing' else '' }}">
+                <i class="bi bi-credit-card"></i> Тариф
+            </a>
+            {% endif %}
+            {% if current_user.is_staff %}
+            <div class="nav-label mt-3">Платформа</div>
+            <a href="{{ url_for('admin.dashboard') }}"
+                class="nav-link {{ 'active' if request.endpoint == 'admin.dashboard' else '' }}">
+                <i class="bi bi-speedometer2"></i> Главная
+            </a>
+            <a href="{{ url_for('admin.orgs') }}"
+                class="nav-link {{ 'active' if request.endpoint in ('admin.orgs','admin.org_detail','admin.set_plan') else '' }}">
+                <i class="bi bi-building"></i> Организации
+            </a>
+            <a href="{{ url_for('admin.users') }}"
+                class="nav-link {{ 'active' if request.endpoint == 'admin.users' else '' }}">
+                <i class="bi bi-person-lines-fill"></i> Пользователи
+            </a>
+            {% endif %}
         </nav>
 
         <div class="sidebar-footer">
@@ -299,9 +329,25 @@
 
     <!-- Main content -->
     <div id="main-content">
+        {% if session.get('impersonator_id') %}
+        <div class="alert alert-warning rounded-0 mb-0 d-flex align-items-center justify-content-between py-2"
+             style="border-left: 5px solid #dc3545;">
+            <span>
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                Вы вошли как <strong>{{ current_user.username }}</strong> через impersonation.
+            </span>
+            <form method="POST" action="{{ url_for('admin.stop_impersonate') }}" class="mb-0">
+                <button type="submit" class="btn btn-sm btn-dark">
+                    <i class="bi bi-box-arrow-left me-1"></i>Вернуться
+                </button>
+            </form>
+        </div>
+        {% endif %}
         <div class="topbar">
             <span class="topbar-title">{% block page_title %}{% endblock %}</span>
             <div class="topbar-user">
+                <i class="bi bi-building"></i>
+                <span class="me-2">{{ current_user.organization.name }}</span>
                 <i class="bi bi-person-circle"></i>
                 {{ current_user.username }}
             </div>

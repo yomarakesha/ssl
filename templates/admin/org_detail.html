@@ -1,0 +1,108 @@
+{% extends 'base.html' %}
+{% block title %}{{ org.name }} — Платформа{% endblock %}
+{% block page_title %}{{ org.name }} <span class="text-muted small">#{{ org.id }}</span>{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-info-circle me-1"></i> Сводка</strong></div>
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">Создана</dt>
+                    <dd class="col-sm-8">{{ org.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+                    <dt class="col-sm-4">Владелец</dt>
+                    <dd class="col-sm-8">{{ org.owner.username if org.owner else '—' }}</dd>
+                    <dt class="col-sm-4">Тариф</dt>
+                    <dd class="col-sm-8">{{ org.plan }} ({{ org.plan_status }})</dd>
+                    <dt class="col-sm-4">SSL</dt><dd class="col-sm-8">{{ counts.ssl }}</dd>
+                    <dt class="col-sm-4">Серверы</dt><dd class="col-sm-8">{{ counts.servers }}</dd>
+                    <dt class="col-sm-4">Доступы</dt><dd class="col-sm-8">{{ counts.accesses }}</dd>
+                    {% if org.subscription %}
+                    <dt class="col-sm-4">Stripe customer</dt>
+                    <dd class="col-sm-8 small font-monospace">{{ org.subscription.stripe_customer_id or '—' }}</dd>
+                    <dt class="col-sm-4">Subscription</dt>
+                    <dd class="col-sm-8 small font-monospace">{{ org.subscription.stripe_subscription_id or '—' }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-gear me-1"></i> Сменить тариф вручную</strong></div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.set_plan', org_id=org.id) }}" class="row g-2">
+                    <div class="col-sm-5">
+                        <label class="form-label small">План</label>
+                        <select name="plan" class="form-select">
+                            <option value="free" {% if org.plan == 'free' %}selected{% endif %}>Free</option>
+                            <option value="pro" {% if org.plan == 'pro' %}selected{% endif %}>Pro</option>
+                        </select>
+                    </div>
+                    <div class="col-sm-5">
+                        <label class="form-label small">Статус</label>
+                        <select name="status" class="form-select">
+                            {% for s in ['active', 'trialing', 'canceled', 'past_due', 'incomplete'] %}
+                            <option value="{{ s }}" {% if org.plan_status == s %}selected{% endif %}>{{ s }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-sm-2 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">OK</button>
+                    </div>
+                </form>
+                <div class="text-muted small mt-2">
+                    Действие залогируется в audit. Stripe не уведомляется — для подарочных подписок.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header"><strong><i class="bi bi-people me-1"></i> Участники ({{ members|length }})</strong></div>
+            <div class="table-responsive">
+                <table class="table mb-0">
+                    <thead>
+                        <tr>
+                            <th>Имя</th>
+                            <th>Email</th>
+                            <th>Роль</th>
+                            <th>Создан</th>
+                            <th class="text-end">Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in members %}
+                        <tr>
+                            <td>
+                                {{ m.username }}
+                                {% if m.id == org.owner_id %}
+                                <i class="bi bi-star-fill text-warning" title="Владелец"></i>
+                                {% endif %}
+                                {% if m.is_staff %}
+                                <span class="badge bg-dark">staff</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted">{{ m.email or '—' }}</td>
+                            <td><span class="badge bg-light text-dark border">{{ m.role }}</span></td>
+                            <td class="text-muted small">{{ m.created_at.strftime('%Y-%m-%d') }}</td>
+                            <td class="text-end">
+                                <form method="POST" action="{{ url_for('admin.impersonate', user_id=m.id) }}" class="d-inline"
+                                      onsubmit="return confirm('Войти как {{ m.username }}?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-warning">
+                                        <i class="bi bi-person-bounding-box"></i> Войти как
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}Платформа — IT Manager{% endblock %}
+{% block page_title %}Платформа: главная{% endblock %}
+
+{% macro stat(label, value, icon, color='primary') %}
+<div class="col-6 col-md-3">
+    <div class="card">
+        <div class="card-body">
+            <div class="text-muted small text-uppercase mb-1">
+                <i class="bi bi-{{ icon }} text-{{ color }} me-1"></i>{{ label }}
+            </div>
+            <div class="h3 mb-0">{{ value }}</div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div class="row g-3 mb-3">
+    {{ stat('Организации', stats.orgs_total, 'building', 'primary') }}
+    {{ stat('Платных', stats.orgs_paid, 'cash-coin', 'success') }}
+    {{ stat('Пользователи', stats.users_total, 'people', 'info') }}
+    {{ stat('Новых за 7 дней', stats.users_new_7d, 'person-plus', 'warning') }}
+</div>
+
+<div class="row g-3 mb-3">
+    {{ stat('SSL', stats.ssl_total, 'patch-check') }}
+    {{ stat('Серверы', stats.servers_total, 'server') }}
+    {{ stat('Доступы', stats.accesses_total, 'key') }}
+    {{ stat('Орг за 7 дней', stats.orgs_new_7d, 'building-add', 'success') }}
+</div>
+
+<div class="card">
+    <div class="card-header"><strong>Недавние организации</strong></div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Создана</th>
+                    <th>Тариф</th>
+                    <th>Владелец</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in recent_orgs %}
+                <tr>
+                    <td>{{ o.name }}</td>
+                    <td class="text-muted small">{{ o.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        {% if o.plan == 'free' %}<span class="badge bg-secondary">Free</span>
+                        {% else %}<span class="badge bg-success">{{ o.plan|capitalize }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="small">{{ o.owner.username if o.owner else '—' }}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('admin.org_detail', org_id=o.id) }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

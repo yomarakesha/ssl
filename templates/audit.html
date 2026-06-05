@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block title %}Аудит — IT Manager{% endblock %}
+{% block page_title %}Аудит действий{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <strong><i class="bi bi-journal-text me-1"></i> Последние 200 событий</strong>
+        <form class="d-flex gap-2" method="GET">
+            <select class="form-select form-select-sm" name="entity" onchange="this.form.submit()">
+                <option value="">Все типы</option>
+                {% for opt in ['ssl_key', 'server', 'access', 'user', 'invite', 'organization'] %}
+                <option value="{{ opt }}" {% if entity == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+            </select>
+            {% if entity %}
+            <a href="{{ url_for('auth.audit') }}" class="btn btn-sm btn-outline-secondary">Сброс</a>
+            {% endif %}
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table mb-0">
+            <thead>
+                <tr>
+                    <th>Когда (UTC)</th>
+                    <th>Кто</th>
+                    <th>Действие</th>
+                    <th>Объект</th>
+                    <th>Детали</th>
+                    <th>IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in entries %}
+                <tr>
+                    <td class="font-monospace small">{{ e.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                    <td>{{ e.actor_label or '—' }}</td>
+                    <td><code>{{ e.action }}</code></td>
+                    <td class="small text-muted">
+                        {% if e.entity_type %}{{ e.entity_type }}#{{ e.entity_id }}{% else %}—{% endif %}
+                    </td>
+                    <td class="small">{{ e.details or '' }}</td>
+                    <td class="font-monospace small text-muted">{{ e.ip_address or '—' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" class="text-center text-muted py-4">Пока пусто</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

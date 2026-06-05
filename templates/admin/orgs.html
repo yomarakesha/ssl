@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Организации — Платформа{% endblock %}
+{% block page_title %}Организации{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <form class="row g-2" method="GET">
+            <div class="col-md-5">
+                <input type="search" name="q" value="{{ q }}" class="form-control" placeholder="Поиск по названию...">
+            </div>
+            <div class="col-md-3">
+                <select name="plan" class="form-select">
+                    <option value="">Все тарифы</option>
+                    <option value="free" {% if plan == 'free' %}selected{% endif %}>Free</option>
+                    <option value="pro" {% if plan == 'pro' %}selected{% endif %}>Pro</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Искать</button>
+            </div>
+            <div class="col-md-2">
+                <a href="{{ url_for('admin.orgs') }}" class="btn btn-outline-secondary w-100">Сброс</a>
+            </div>
+        </form>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Тариф</th>
+                    <th class="text-end">Пользователей</th>
+                    <th class="text-end">Записей</th>
+                    <th>Создана</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in org_stats %}
+                <tr>
+                    <td class="font-monospace small">#{{ s.org.id }}</td>
+                    <td><strong>{{ s.org.name }}</strong></td>
+                    <td>
+                        {% if s.org.plan == 'free' %}<span class="badge bg-secondary">Free</span>
+                        {% else %}<span class="badge bg-success">{{ s.org.plan|capitalize }}</span>
+                        {% endif %}
+                        <span class="small text-muted">{{ s.org.plan_status }}</span>
+                    </td>
+                    <td class="text-end">{{ s.users }}</td>
+                    <td class="text-end">{{ s.records }}</td>
+                    <td class="text-muted small">{{ s.org.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td class="text-end">
+                        <a href="{{ url_for('admin.org_detail', org_id=s.org.id) }}" class="btn btn-sm btn-outline-primary">
+                            Открыть <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-4">Ничего не найдено</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

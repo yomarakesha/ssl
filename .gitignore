@@ -1,0 +1,30 @@
+# Secrets — NEVER commit
+fernet.key
+.env
+.env.*
+!.env.example
+*.key
+secrets/
+
+# Database files
+*.db
+instance/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.python-version
+
+# Logs
+logs/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
